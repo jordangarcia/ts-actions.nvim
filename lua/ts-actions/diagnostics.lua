@@ -2,6 +2,7 @@ local event = require("nui.utils.autocmd").event
 local Line = require("nui.line")
 local Popup = require("nui.popup")
 local Text = require("nui.text")
+local keys = require("ts-actions.keys")
 local lsp2 = require("ts-actions.lsp2")
 
 local Diagnostics = {}
@@ -80,13 +81,37 @@ local function make_diagnostic_lines(diagnostic, title, highlight, code_actions)
     lines[i] = line
   end
 
+  local KEYS = vim.split(
+    "qwertyuiopasdfghlzxcvbnm" --[=[@as string]=],
+    "",
+    { trimempty = true }
+  )
+  -- handle code actions
+  local used_keys = {}
+  ---@type {name: string, key: string, item: any, order: integer}[]}
+  local options = {}
   local code_action_lines = {}
   for i, action in ipairs(code_actions) do
     if action.command.title then
-      vim.notify(vim.inspect(action))
+      local name = action.command.title
+      local option = { item = action, order = 0, name = name }
+      local match = assert(
+        keys.get_action_config({
+          title = option.name,
+          priorities = {},
+          valid_keys = KEYS,
+          invalid_keys = used_keys,
+          override_function = function(_) end,
+        }),
+        'Failed to find a key to map to "' .. option.name .. '"'
+      )
+      option.key = match.key
+      option.order = match.order
+      options[i] = option
+
       local line = Line()
       line:append(Text(string.format("[", i), "CodeActionNormal"))
-      line:append(Text(string.format("%s", i), "CodeActionShortcut"))
+      line:append(Text(string.format("%s", match.key), "CodeActionShortcut"))
       line:append(Text(string.format("] ", i), "CodeActionNormal"))
       line:append(Text(action.command.title, "CodeActionNormal"))
       code_action_lines[i] = line
@@ -95,8 +120,12 @@ local function make_diagnostic_lines(diagnostic, title, highlight, code_actions)
     end
   end
 
+  table.sort(options, function(a, b)
+    return a.order < b.order
+  end)
+
   if #code_action_lines == 0 then
-    return title_line, lines, width, #lines
+    return title_line, lines, options, width, #lines
   end
 
   local divider = Line()
@@ -105,7 +134,7 @@ local function make_diagnostic_lines(diagnostic, title, highlight, code_actions)
 
   local all_lines = concat_tables(lines, divider_lines, code_action_lines)
 
-  return title_line, all_lines, width, #all_lines
+  return title_line, all_lines, options, width, #all_lines
 end
 
 function Diagnostics:goto_next_and_show(opts)
@@ -137,7 +166,7 @@ function Diagnostics:show(diagnostic)
   local severity, highlight = parse_severity(diagnostic.severity)
   self.main_buf = vim.api.nvim_get_current_buf()
 
-  local title_line, contents, width, height =
+  local title_line, contents, options, width, height =
     make_diagnostic_lines(diagnostic, severity, highlight, code_actions)
 
   self.popup = Popup({
@@ -175,7 +204,7 @@ function Diagnostics:show(diagnostic)
   end
 
   self:setup_autocmds()
-  self:setup_keymaps()
+  self:setup_keymaps(options)
   -- Close popup when cursor leaves the window
   self.popup:on(event.BufLeave, function()
     self:close()
@@ -220,21 +249,39 @@ function Diagnostics:setup_autocmds()
   )
 end
 
-function Diagnostics:setup_keymaps()
+function Diagnostics:setup_keymaps(options)
   -- Set key mappings to dismiss the popup in the current window
   local current_win = vim.api.nvim_get_current_win()
+  local bufnr = vim.api.nvim_win_get_buf(current_win)
   for _, key in ipairs(self.options.dismiss_keys) do
     vim.keymap.set({ "n", "v" }, key, function()
       self:close()
     end, {
       noremap = true,
       silent = true,
-      buffer = vim.api.nvim_win_get_buf(current_win),
+      buffer = bufnr,
     })
     table.insert(self.keymaps, {
       key = key,
       mode = { "n", "v" },
-      buf = vim.api.nvim_win_get_buf(current_win),
+      buf = bufnr,
+    })
+  end
+
+  for i, option in ipairs(options) do
+    vim.keymap.set("n", option.key, function()
+      lsp2.execute_command(option.item)
+      self:close()
+    end, {
+      buffer = bufnr,
+      noremap = true,
+      silent = true,
+      nowait = true,
+    })
+    table.insert(self.keymaps, {
+      key = option.key,
+      mode = { "n" },
+      buf = bufnr,
     })
   end
 end

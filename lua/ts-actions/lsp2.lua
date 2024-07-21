@@ -177,6 +177,7 @@ end
 ---@param action CodeAction
 function M.execute_command(action)
   local client = assert(vim.lsp.get_client_by_id(action.client_id))
+
   local ctx = { bufnr = action.buffer }
   ---@type table?
   local reg
