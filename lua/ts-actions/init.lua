@@ -1,13 +1,9 @@
 local M = {}
 local m = {}
 
-local event = require("nui.utils.autocmd").event
-local Popup = require("nui.popup")
 local diagnostics = require("ts-actions.diagnostics")
 local keys = require("ts-actions.keys")
 local lsp = require("ts-actions.lsp")
-local lsp2 = require("ts-actions.lsp2")
-local win2 = require("ts-actions.window2")
 local window = require("ts-actions.window")
 
 m.config = {}

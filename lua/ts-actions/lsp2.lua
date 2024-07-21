@@ -61,7 +61,14 @@ function M.get_next(opts)
   if check_cursor then
     local cursor_diagnostics = get_diagnostic({ cursor = true })
     if #cursor_diagnostics > 0 then
-      return cursor_diagnostics[1]
+      -- Find the diagnostic with the highest severity (lowest severity number)
+      local highest_severity_diag = cursor_diagnostics[1]
+      for _, diag in ipairs(cursor_diagnostics) do
+        if diag.severity < highest_severity_diag.severity then
+          highest_severity_diag = diag
+        end
+      end
+      return highest_severity_diag
     end
   end
 
@@ -77,10 +84,14 @@ function M.goto_next(opts)
   opts = opts or {}
   local severity = opts.severity or vim.diagnostic.severity.ERROR
 
-  local next_diagnostic = M.get_next({ severity = severity, check_cursor = true })
+  local next_diagnostic =
+    M.get_next({ severity = severity, check_cursor = true })
 
   if next_diagnostic then
-    vim.api.nvim_win_set_cursor(0, { next_diagnostic.lnum + 1, next_diagnostic.col })
+    vim.api.nvim_win_set_cursor(
+      0,
+      { next_diagnostic.lnum + 1, next_diagnostic.col }
+    )
   end
 end
 
@@ -88,12 +99,16 @@ end
 local function request_code_action(params)
   local buffer = vim.api.nvim_get_current_buf()
   ---@type table<integer, {result: CodeAction[], error: table? }>?, string?
-  local results_lsp, err = vim.lsp.buf_request_sync(buffer, "textDocument/codeAction", params, 10000)
+  local results_lsp, err =
+    vim.lsp.buf_request_sync(buffer, "textDocument/codeAction", params, 10000)
   if err then
     return vim.notify("ERROR: " .. err, vim.log.levels.ERROR)
   end
   if not results_lsp or vim.tbl_isempty(results_lsp) then
-    return vim.notify("No results from textDocument/codeAction", vim.log.levels.INFO)
+    return vim.notify(
+      "No results from textDocument/codeAction",
+      vim.log.levels.INFO
+    )
   end
   local commands = {}
   for client_id, response in pairs(results_lsp) do
@@ -112,10 +127,18 @@ local function request_code_action(params)
   return commands
 end
 
-function M.code_action()
+function M.code_action(diagnostics)
   M.bufnr = vim.api.nvim_get_current_buf()
   local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local context = { diagnostics = vim.lsp.diagnostic.get_line_diagnostics(M.bufnr, lnum, {}, nil) }
+  -- local context = { diagnostics = diagnostics }
+  local context = {
+    diagnostics = vim.lsp.diagnostic.get_line_diagnostics(
+      M.bufnr,
+      lnum,
+      {},
+      nil
+    ),
+  }
   local params = vim.lsp.util.make_range_params()
   params.context = context
   return request_code_action(params)
@@ -124,7 +147,14 @@ end
 function M.range_code_action()
   M.bufnr = vim.api.nvim_get_current_buf()
   local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
-  local context = { diagnostics = vim.lsp.diagnostic.get_line_diagnostics(M.bufnr, lnum, {}, nil) }
+  local context = {
+    diagnostics = vim.lsp.diagnostic.get_line_diagnostics(
+      M.bufnr,
+      lnum,
+      {},
+      nil
+    ),
+  }
   local params = vim.lsp.util.make_given_range_params()
   params.context = context
   return request_code_action(params)
@@ -153,9 +183,15 @@ function M.execute_command(action)
   ---@type boolean
   local supports_resolve
   if action.data then
-    reg = client.dynamic_capabilities:get(textDocument_codeAction, { bufnr = action.buffer })
-    supports_resolve = vim.tbl_get(reg or {}, "registerOptions", "resolveProvider")
-      or client.supports_method(codeAction_resolve)
+    reg = client.dynamic_capabilities:get(
+      textDocument_codeAction,
+      { bufnr = action.buffer }
+    )
+    supports_resolve = vim.tbl_get(
+      reg or {},
+      "registerOptions",
+      "resolveProvider"
+    ) or client.supports_method(codeAction_resolve)
   end
   if not action.edit and client and supports_resolve then
     client.request(codeAction_resolve, action, function(err, resolved_action)
