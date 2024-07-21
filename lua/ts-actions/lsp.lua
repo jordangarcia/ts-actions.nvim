@@ -14,6 +14,7 @@
 ---@class CodeAction
 ---@field title string
 ---@field kind? string
+---@field isPreferred? boolean
 ---@field diagnostics? Diagnostic[]
 ---@field edit? table
 ---@field command? table

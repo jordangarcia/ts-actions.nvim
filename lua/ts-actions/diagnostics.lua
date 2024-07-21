@@ -7,30 +7,30 @@ local keys = require("ts-actions.keys")
 local lsp2 = require("ts-actions.lsp")
 local utils = require("ts-actions.utils")
 
+---@class Diagnostics
+---@field popup any
+---@field keymaps {key: string, mode: string[], buf: number}[]
+---@field autocmd_group number|nil
+---@field opts ParsedConfig
 local Diagnostics = {}
 Diagnostics.__index = Diagnostics
 
-function Diagnostics.new(options)
+---@param opts ParsedConfig
+function Diagnostics:new(opts)
   local self = setmetatable({}, Diagnostics)
-  self.options = vim.tbl_deep_extend("force", {
-    dismiss_keys = { "<C-c>", "q" },
-  }, options or {})
+  self.opts = opts
   self.popup = nil
   self.keymaps = {}
   self.autocmd_group = nil
+  print(vim.inspect(self.opts))
   return self
 end
 
 ---@return ActionOption[]
-local function get_code_actions()
+function Diagnostics:get_code_actions()
   local code_actions = lsp2.code_action() or {}
   local used_keys = {}
-  local KEYS = vim.split(
-    "qwertyuiopasdfghlzxcvbnm" --[=[@as string]=],
-    "",
-    { trimempty = true }
-  )
-  ---@type {title: string, key: string, item: any, order: integer}[]
+  ---@type ActionOption[]
   local options = {}
 
   for i, action in ipairs(code_actions) do
@@ -38,11 +38,13 @@ local function get_code_actions()
       ---@type ActionOption
       local option =
         { action = action, order = 0, key = "", title = action.title }
+      print("priorities" .. vim.inspect(self.opts.priority[vim.bo.filetype]))
       local match = assert(
         keys.get_action_config({
           title = option.title,
-          priorities = {},
-          valid_keys = KEYS,
+          priorities = self.opts.priority[vim.bo.filetype],
+          ---@type string[]
+          valid_keys = self.opts.keys,
           invalid_keys = used_keys,
           override_function = function(_) end,
         }),
@@ -55,8 +57,15 @@ local function get_code_actions()
   end
 
   table.sort(options, function(a, b)
-    return a.order < b.order
+    return a.order > b.order
   end)
+
+  if self.opts.filter_function then
+    options = vim.tbl_filter(function(option)
+      print("filtering" .. vim.inspect(option.action))
+      return self.opts.filter_function(option.action)
+    end, options)
+  end
 
   return options
 end
@@ -88,7 +97,6 @@ local function make_diagnostic_lines(diagnostic, highlight, actions)
     linebuffer:append("] ", "CodeActionNormal")
     linebuffer:append(action.title, "CodeActionNormal")
     linebuffer:append(" (" .. action.action.kind .. ")", "Comment")
-    print(vim.inspect(action.action))
   end
 
   return linebuffer
@@ -124,7 +132,7 @@ function Diagnostics:show(diagnostic)
   local title_line = Line()
   title_line:append(Text(string.upper(severity), highlight))
 
-  local code_actions = get_code_actions()
+  local code_actions = self:get_code_actions()
   self.main_buf = vim.api.nvim_get_current_buf()
 
   local linebuffer = make_diagnostic_lines(diagnostic, highlight, code_actions)
@@ -215,7 +223,7 @@ function Diagnostics:setup_keymaps(options)
   -- Set key mappings to dismiss the popup in the current window
   local current_win = vim.api.nvim_get_current_win()
   local bufnr = vim.api.nvim_win_get_buf(current_win)
-  for _, key in ipairs(self.options.dismiss_keys) do
+  for _, key in ipairs(self.opts.dismiss_keys) do
     vim.keymap.set({ "n", "v" }, key, function()
       self:close()
     end, {
@@ -274,4 +282,4 @@ function Diagnostics:close()
   self.main_buf = nil
 end
 
-return Diagnostics.new()
+return Diagnostics

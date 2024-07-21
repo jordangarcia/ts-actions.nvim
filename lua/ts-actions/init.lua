@@ -1,17 +1,16 @@
 local M = {}
 local m = {}
 
-local diagnostics = require("ts-actions.diagnostics")
-local keys = require("ts-actions.keys")
+local Diagnostics = require("ts-actions.diagnostics")
 local lsp = require("ts-actions.lsp")
-local window = require("ts-actions.window")
 
-m.config = {}
+---@type Diagnostics
+m.diagnostics = nil
 ---@type string[]
 m.keys = {}
----@type FastActionConfig
+---@type Config
 m.defaults = {
-  dismiss_keys = { "j", "k", "<c-c>", "q" },
+  dismiss_keys = { "<esc>", "<c-c>", "q" },
   keys = "wertyuiopasdfghlzxcvbnm",
   override_function = function(_) end,
   popup = {
@@ -84,19 +83,18 @@ end
 ---
 
 function M.next()
-  diagnostics:goto_next_and_show()
+  m.diagnostics:goto_next_and_show()
 end
 
----@param opts FastActionConfig
+---@param opts Config
 function M.setup(opts)
-  m.config = vim.tbl_deep_extend("force", m.defaults, opts or {})
+  local config = vim.tbl_deep_extend("force", m.defaults, opts or {})
   -- if m.config.register_ui_select then vim.ui.select = M.select end
-  if type(m.config.keys) == "table" then
-    m.keys = m.config.keys --[=[@as string[]]=]
-  elseif type(m.config.keys) == "string" then
-    m.keys =
-      vim.split(m.config.keys --[=[@as string]=], "", { trimempty = true })
+  if type(config.keys) == "string" then
+    config.keys =
+      vim.split(config.keys --[=[@as string]=], "", { trimempty = true })
   end
+  m.diagnostics = Diagnostics:new(config)
 end
 
 return M

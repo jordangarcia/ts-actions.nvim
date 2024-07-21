@@ -3,11 +3,7 @@
 ---@field invalid_keys string[]
 ---@field override_function? fun(params: GetActionConfigParams): ActionConfig | nil
 ---@field priorities? ActionConfig[]
----@field valid_keys? string[]
-
----@class CodeAction: lsp.CodeAction
----@field client_id integer
----@field client_name string
+---@field valid_keys? string[] | string
 
 ---@class ActionConfig
 ---@field pattern string
@@ -37,19 +33,22 @@
 ---@field format_item? fun(item: any): string
 ---@field kind? string
 
----@class FastActionConfig
+---@class Config
 ---Configures options for the code action and select popups.
 ---@field popup? PopupConfig
 ---Specifies the priority and keys to map to patterns matching code actions.
 ---@field priority? table<string, ActionConfig[]>
----Determines if the select popup should be registered as a `vim.ui.select` handler.
----@field register_ui_select? boolean
 ---Keys to use to map options.
 ---@field keys? string[] | string
 ---Keys to use to dismiss the popup.
 ---@field dismiss_keys? string[]
 ---Override function to map keys to actions.
 ---@field override_function? fun(params: GetActionConfigParams): ActionConfig | nil
+---Override filter code actions
+---@field filter_function? fun(action: CodeAction): boolean
+--
+---@class ParsedConfig : Config
+---@field keys string[]
 
 ---@class PopupConfig
 ---Title of the popup.

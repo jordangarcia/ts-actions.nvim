@@ -34,7 +34,6 @@ end
 ---@param diagnostic Diagnostic
 function M.diagnostic_source_str(diagnostic)
   local source_code_str = ""
-  print(vim.inspect(diagnostic))
   if diagnostic.source then
     source_code_str = diagnostic.source
   end
