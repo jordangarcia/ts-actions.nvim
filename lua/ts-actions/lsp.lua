@@ -232,7 +232,6 @@ function M.execute_command(action)
   local supports_resolve
   if action.data then
     supports_resolve = M.support_resolve(client, action.buffer)
-    print("supports_resolve", supports_resolve)
   end
   if not action.edit and client and supports_resolve then
     client.request(codeAction_resolve, action, function(err, resolved_action)
