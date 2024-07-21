@@ -1,20 +1,14 @@
 local event = require("nui.utils.autocmd").event
 local Line = require("nui.line")
+local LineBuffer = require("ts-actions.line-buffer")
 local Popup = require("nui.popup")
 local Text = require("nui.text")
 local keys = require("ts-actions.keys")
-local lsp2 = require("ts-actions.lsp2")
+local lsp2 = require("ts-actions.lsp")
+local utils = require("ts-actions.utils")
 
 local Diagnostics = {}
 Diagnostics.__index = Diagnostics
-
-local function concat_tables(...)
-  local result = {}
-  for _, t in ipairs({ ... }) do
-    vim.list_extend(result, t)
-  end
-  return result
-end
 
 function Diagnostics.new(options)
   local self = setmetatable({}, Diagnostics)
@@ -27,96 +21,36 @@ function Diagnostics.new(options)
   return self
 end
 
-local function parse_severity(severity)
-  local title = "Hint"
-  if severity == vim.diagnostic.severity.ERROR then
-    title = "Error"
-  elseif severity == vim.diagnostic.severity.WARN then
-    title = "Warn"
-  elseif severity == vim.diagnostic.severity.INFO then
-    title = "Info"
-  end
-
-  local highlight = "Diagnostic" .. title
-  return title, highlight
-end
-
-local function make_diagnostic_lines(diagnostic, title, highlight, code_actions)
-  -- vim.notify(vim.inspect(code_actions))
-
-  local title_line = Line()
-  -- title_line:append(Text(title, highlight))
-  -- Add source and code if available
-  if diagnostic.source or diagnostic.code then
-    -- title_line:append(" ") -- Add a space between the two parts
-    local source_code_str = ""
-    if diagnostic.source then
-      source_code_str = diagnostic.source
-    end
-    if diagnostic.code then
-      if diagnostic.source then
-        source_code_str = source_code_str .. " "
-      end
-      source_code_str = source_code_str
-        .. "["
-        .. tostring(diagnostic.code)
-        .. "]"
-    end
-    -- title_line:append(Text(source_code_str, "Comment"))
-    title_line:append(Text(source_code_str, highlight))
-  end
-
-  local lines = {}
-
-  ---@type string[]
-  local diag_lines = vim.split(diagnostic.message, "\n", { trimempty = true })
-
-  local width = 0
-  for i, content in ipairs(diag_lines) do
-    local line = Line()
-    line:append(Text(content:gsub("\r", ""), highlight))
-
-    local line_width = vim.fn.strdisplaywidth(line:content())
-    width = math.max(line_width, width)
-    lines[i] = line
-  end
-
+---@return ActionOption[]
+local function get_code_actions()
+  local code_actions = lsp2.code_action() or {}
+  local used_keys = {}
   local KEYS = vim.split(
     "qwertyuiopasdfghlzxcvbnm" --[=[@as string]=],
     "",
     { trimempty = true }
   )
-  -- handle code actions
-  local used_keys = {}
-  ---@type {name: string, key: string, item: any, order: integer}[]}
+  ---@type {title: string, key: string, item: any, order: integer}[]
   local options = {}
-  local code_action_lines = {}
+
   for i, action in ipairs(code_actions) do
-    if action.command.title then
-      local name = action.command.title
-      local option = { item = action, order = 0, name = name }
+    if action.title then
+      ---@type ActionOption
+      local option =
+        { action = action, order = 0, key = "", title = action.title }
       local match = assert(
         keys.get_action_config({
-          title = option.name,
+          title = option.title,
           priorities = {},
           valid_keys = KEYS,
           invalid_keys = used_keys,
           override_function = function(_) end,
         }),
-        'Failed to find a key to map to "' .. option.name .. '"'
+        'Failed to find a key to map to "' .. option.title .. '"'
       )
       option.key = match.key
       option.order = match.order
       options[i] = option
-
-      local line = Line()
-      line:append(Text(string.format("[", i), "CodeActionNormal"))
-      line:append(Text(string.format("%s", match.key), "CodeActionShortcut"))
-      line:append(Text(string.format("] ", i), "CodeActionNormal"))
-      line:append(Text(action.command.title, "CodeActionNormal"))
-      code_action_lines[i] = line
-      local line_width = vim.fn.strdisplaywidth(line:content())
-      width = math.max(line_width, width)
     end
   end
 
@@ -124,17 +58,34 @@ local function make_diagnostic_lines(diagnostic, title, highlight, code_actions)
     return a.order < b.order
   end)
 
-  if #code_action_lines == 0 then
-    return title_line, lines, options, width, #lines
+  return options
+end
+
+---@param diagnostic Diagnostic
+---@param highlight string
+---@param actions ActionOption[]
+---@return LineBuffer
+local function make_diagnostic_lines(diagnostic, highlight, actions)
+  local linebuffer = LineBuffer:new({ max_width = 80, padding = 1 })
+
+  linebuffer:append(diagnostic.message, highlight)
+  print("diagnostic.message: ", linebuffer:debug())
+
+  if #actions == 0 then
+    return linebuffer
   end
 
-  local divider = Line()
-  divider:append(Text(string.rep("-", width), "Comment"))
-  local divider_lines = { divider }
+  linebuffer:divider("─", "Comment")
 
-  local all_lines = concat_tables(lines, divider_lines, code_action_lines)
+  for _i, action in ipairs(actions) do
+    linebuffer:newline()
+    linebuffer:append("[", "CodeActionNormal")
+    linebuffer:append(action.key, "CodeActionShortcut")
+    linebuffer:append("] ", "CodeActionNormal")
+    linebuffer:append(action.title, "CodeActionNormal")
+  end
 
-  return title_line, all_lines, options, width, #all_lines
+  return linebuffer
 end
 
 function Diagnostics:goto_next_and_show(opts)
@@ -162,15 +113,26 @@ function Diagnostics:show(diagnostic)
     self:close()
   end
 
-  local code_actions = lsp2.code_action({ diagnostic })
-  local severity, highlight = parse_severity(diagnostic.severity)
+  local title_line = Line()
+  -- title_line:append(Text(title, highlight))
+  -- Add source and code if available
+  if diagnostic.source or diagnostic.code then
+    -- title_line:append(" ") -- Add a space between the two parts
+    -- title_line:append(Text(source_code_str, "Comment"))
+    title_line:append(Text(utils.diagnostic_source_str(diagnostic), "Comment"))
+  end
+
+  local code_actions = get_code_actions()
+  local severity, highlight = utils.parse_severity(diagnostic.severity)
   self.main_buf = vim.api.nvim_get_current_buf()
 
-  local title_line, contents, options, width, height =
-    make_diagnostic_lines(diagnostic, severity, highlight, code_actions)
+  local linebuffer = make_diagnostic_lines(diagnostic, highlight, code_actions)
 
   self.popup = Popup({
-    size = { width = width, height = height },
+    size = {
+      width = linebuffer:width(),
+      height = linebuffer:height(),
+    },
     position = { row = 2, col = 1 },
     enter = false,
     focusable = true,
@@ -199,12 +161,10 @@ function Diagnostics:show(diagnostic)
   })
   self.popup:mount()
 
-  for i, content in ipairs(contents) do
-    content:render(self.popup.bufnr, -1, i)
-  end
+  linebuffer:render(self.popup.bufnr)
 
   self:setup_autocmds()
-  self:setup_keymaps(options)
+  self:setup_keymaps(code_actions)
   -- Close popup when cursor leaves the window
   self.popup:on(event.BufLeave, function()
     self:close()
@@ -249,6 +209,7 @@ function Diagnostics:setup_autocmds()
   )
 end
 
+---@param options ActionOption[]
 function Diagnostics:setup_keymaps(options)
   -- Set key mappings to dismiss the popup in the current window
   local current_win = vim.api.nvim_get_current_win()
@@ -270,7 +231,7 @@ function Diagnostics:setup_keymaps(options)
 
   for i, option in ipairs(options) do
     vim.keymap.set("n", option.key, function()
-      lsp2.execute_command(option.item)
+      lsp2.execute_command(option.action)
       self:close()
     end, {
       buffer = bufnr,

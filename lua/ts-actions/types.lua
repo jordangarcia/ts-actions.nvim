@@ -14,6 +14,12 @@
 ---@field key string
 ---@field order? integer
 
+---@class ActionOption
+---@field action CodeAction
+---@field key string
+---@field title string
+---@field order integer
+
 ---@class WindowOpts
 ---@field title? string
 ---@field divider? string
