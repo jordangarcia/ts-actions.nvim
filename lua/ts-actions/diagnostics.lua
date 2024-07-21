@@ -69,7 +69,11 @@ local function make_diagnostic_lines(diagnostic, highlight, actions)
   local linebuffer = LineBuffer:new({ max_width = 80, padding = 1 })
 
   linebuffer:append(diagnostic.message, highlight)
-  print("diagnostic.message: ", linebuffer:debug())
+  local diagnostic_str = utils.diagnostic_source_str(diagnostic)
+  -- Add source and code if available
+  if diagnostic_str then
+    linebuffer:append(" " .. diagnostic_str, "Comment")
+  end
 
   if #actions == 0 then
     return linebuffer
@@ -83,6 +87,8 @@ local function make_diagnostic_lines(diagnostic, highlight, actions)
     linebuffer:append(action.key, "CodeActionShortcut")
     linebuffer:append("] ", "CodeActionNormal")
     linebuffer:append(action.title, "CodeActionNormal")
+    linebuffer:append(" (" .. action.action.kind .. ")", "Comment")
+    print(vim.inspect(action.action))
   end
 
   return linebuffer
@@ -113,17 +119,12 @@ function Diagnostics:show(diagnostic)
     self:close()
   end
 
+  local severity, highlight = utils.parse_severity(diagnostic.severity)
+
   local title_line = Line()
-  -- title_line:append(Text(title, highlight))
-  -- Add source and code if available
-  if diagnostic.source or diagnostic.code then
-    -- title_line:append(" ") -- Add a space between the two parts
-    -- title_line:append(Text(source_code_str, "Comment"))
-    title_line:append(Text(utils.diagnostic_source_str(diagnostic), "Comment"))
-  end
+  title_line:append(Text(string.upper(severity), highlight))
 
   local code_actions = get_code_actions()
-  local severity, highlight = utils.parse_severity(diagnostic.severity)
   self.main_buf = vim.api.nvim_get_current_buf()
 
   local linebuffer = make_diagnostic_lines(diagnostic, highlight, code_actions)
@@ -269,6 +270,8 @@ function Diagnostics:close()
     self.popup:unmount()
     self.popup = nil
   end
+
+  self.main_buf = nil
 end
 
 return Diagnostics.new()

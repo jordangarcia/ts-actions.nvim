@@ -51,15 +51,16 @@ function LineBuffer:break_line(text, highlight)
 
   local remaining = text
   while #remaining > 0 do
-    if #remaining <= self.max_width then
+    local line_width_available = self.max_width - self.current_line:width()
+    if #remaining <= line_width_available then
       self.current_line:append(Text(remaining, highlight))
       break
     end
 
-    local break_point = self.max_width
+    local break_point = line_width_available
 
     -- Search backwards for a space, up to 20 characters
-    for i = break_point, math.max(1, break_point - 20), -1 do
+    for i = break_point, math.max(1, line_width_available - 10), -1 do
       if remaining:sub(i, i) == " " then
         break_point = i -- Break before the space
         break
