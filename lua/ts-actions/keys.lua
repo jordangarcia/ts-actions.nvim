@@ -36,14 +36,10 @@ end
 ---@param params GetActionConfigParams
 ---@return ActionConfig | nil
 function m.get_action_config_from_priorities(params)
-  print(vim.inspect(params.priorities))
   if params.priorities == nil or #params.priorities == 0 then
     return nil
   end
   for _, value in ipairs(params.priorities) do
-    print(
-      "matching.." .. vim.inspect(params.title:lower():match(value.pattern))
-    )
     if
       not vim.tbl_contains(params.invalid_keys, value.key)
       and params.title:lower():match(value.pattern)

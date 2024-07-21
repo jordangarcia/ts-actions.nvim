@@ -34,10 +34,10 @@
 ---@field kind? string
 
 ---@class Config
----Configures options for the code action and select popups.
----@field popup? PopupConfig
 ---Specifies the priority and keys to map to patterns matching code actions.
 ---@field priority? table<string, ActionConfig[]>
+---Specifies the priority and keys to map to patterns matching code actions.
+---@field severity? table<string, number>
 ---Keys to use to map options.
 ---@field keys? string[] | string
 ---Keys to use to dismiss the popup.
@@ -49,17 +49,3 @@
 --
 ---@class ParsedConfig : Config
 ---@field keys string[]
-
----@class PopupConfig
----Title of the popup.
----@field title? string
----Specifies what the popup is relative to.
----@field relative? string
----Style of the popup border. Can be "single", "double", "rounded", "thick", or
----a table of strings in the format
----{"top left", "top", "top right", "right", "bottom right", "bottom", "bottom left", "left"}.
----@field border? string | string[]
----Whether to hide the cursor when the popup is shown.
----@field hide_cursor? boolean
----Configures the highlights of different aspects of the popup.
----@field highlight? table<string, string>

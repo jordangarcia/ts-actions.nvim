@@ -13,18 +13,8 @@ m.defaults = {
   dismiss_keys = { "<esc>", "<c-c>", "q" },
   keys = "wertyuiopasdfghlzxcvbnm",
   override_function = function(_) end,
-  popup = {
-    border = "single",
-    hide_cursor = true,
-    highlight = {
-      divider = "FloatBorder",
-      key = "MoreMsg",
-      title = "Title",
-      window = "Normal",
-    },
-    title = "Select one of:",
-  },
   priority = {},
+  severity = {},
   register_ui_select = false,
 }
 
@@ -82,8 +72,10 @@ end
 --- ```
 ---
 
-function M.next()
-  m.diagnostics:goto_next_and_show()
+function M.next(opts)
+  local opts = opts or {}
+  local severity = opts.severity or m.diagnostics.opts.severity[vim.bo.filetype]
+  m.diagnostics:goto_next_and_show({ severity = severity })
 end
 
 ---@param opts Config

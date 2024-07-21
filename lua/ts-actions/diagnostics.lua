@@ -22,7 +22,6 @@ function Diagnostics:new(opts)
   self.popup = nil
   self.keymaps = {}
   self.autocmd_group = nil
-  print(vim.inspect(self.opts))
   return self
 end
 
@@ -38,7 +37,6 @@ function Diagnostics:get_code_actions()
       ---@type ActionOption
       local option =
         { action = action, order = 0, key = "", title = action.title }
-      print("priorities" .. vim.inspect(self.opts.priority[vim.bo.filetype]))
       local match = assert(
         keys.get_action_config({
           title = option.title,
@@ -62,7 +60,6 @@ function Diagnostics:get_code_actions()
 
   if self.opts.filter_function then
     options = vim.tbl_filter(function(option)
-      print("filtering" .. vim.inspect(option.action))
       return self.opts.filter_function(option.action)
     end, options)
   end
