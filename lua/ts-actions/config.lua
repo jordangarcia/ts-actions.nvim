@@ -11,9 +11,6 @@ local default_config = {
   priority = {},
   severity = {},
   log_level = "info",
-  -- filter_function = function(action)
-  --   return true
-  -- end,
 }
 
 local M = {
@@ -21,7 +18,7 @@ local M = {
   config = vim.deepcopy(default_config),
 }
 
----@param args ParsedConfig
+---@param args Config
 M.setup = function(args)
   logger:log("setup", M.config)
   if type(args.keys) == "string" then

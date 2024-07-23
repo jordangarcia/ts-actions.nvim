@@ -146,15 +146,37 @@ local function make_diagnostic_lines(diagnostic, highlight, actions)
   return linebuffer
 end
 
+function Diagnostics:goto_prev_and_show(opts)
+  opts = opts or {}
+  local severity = opts.severity or vim.diagnostic.severity.ERROR
+
+  local check_cursor = not self.popup
+
+  local next_diagnostic = self.client:get_diagnostic({
+    severity = severity,
+    pos = check_cursor and "cursor" or "prev",
+  })
+
+  if next_diagnostic then
+    vim.api.nvim_win_set_cursor(
+      0,
+      { next_diagnostic.lnum + 1, next_diagnostic.col }
+    )
+    self:show(next_diagnostic)
+  else
+    self:close()
+  end
+end
+
 function Diagnostics:goto_next_and_show(opts)
   opts = opts or {}
   local severity = opts.severity or vim.diagnostic.severity.ERROR
 
   local check_cursor = not self.popup
 
-  local next_diagnostic = self.client:get_next_diagnostic({
+  local next_diagnostic = self.client:get_diagnostic({
     severity = severity,
-    check_cursor = check_cursor,
+    pos = check_cursor and "cursor" or "next",
   })
 
   if next_diagnostic then

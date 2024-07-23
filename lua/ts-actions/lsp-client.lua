@@ -234,19 +234,20 @@ end
 
 ---@class GetNextOpts
 ---@field severity? DiagnosticSeverity
----@field check_cursor? boolean
+---@field pos 'next' | 'prev' | 'cursor'
 
 ---@class GotoDiagnosticOpts
 ---@field severity? DiagnosticSeverity
 
+--
 ---@param opts? GetNextOpts
 ---@return Diagnostic|nil
-function LspClient:get_next_diagnostic(opts)
+function LspClient:get_diagnostic(opts)
   opts = opts or {}
   local severity = opts.severity or vim.diagnostic.severity.ERROR
-  local check_cursor = opts.check_cursor or false
+  local pos = opts.pos or "next"
 
-  if check_cursor then
+  if pos == "cursor" then
     local cursor_diagnostics = get_diagnostic({ cursor = true })
     if #cursor_diagnostics > 0 then
       -- Find the diagnostic with the highest severity (lowest severity number)
@@ -258,6 +259,14 @@ function LspClient:get_next_diagnostic(opts)
       end
       return highest_severity_diag
     end
+  end
+
+  if pos == "prev" then
+    return vim.diagnostic.get_prev({
+      severity = { min = severity },
+      wrap = true,
+      float = false,
+    })
   end
 
   return vim.diagnostic.get_next({
