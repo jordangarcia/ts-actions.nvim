@@ -15,6 +15,8 @@ local utils = require("ts-actions.utils")
 ---@field popup any
 ---@field client LspClient
 ---@field keymaps {key: string, mode: string[], buf: number}[]
+---@field main_buf number|nil
+---@field main_window number|nil
 ---@field autocmd_group number|nil
 local Diagnostics = {}
 Diagnostics.__index = Diagnostics
@@ -25,6 +27,8 @@ function Diagnostics:new()
   self.popup = nil
   self.keymaps = {}
   self.autocmd_group = nil
+  self.main_buf = nil
+  self.main_window = nil
   return self
 end
 
@@ -85,6 +89,7 @@ function Diagnostics:get_code_actions(diagnostics, callback)
         return {
           title = entry.title,
           key = entry.key,
+          kind = entry.action.kind,
         }
       end, options)
     )
@@ -94,6 +99,16 @@ function Diagnostics:get_code_actions(diagnostics, callback)
         return config.filter_function(option.action)
       end, options)
     end
+    logger:log(
+      "after filter",
+      vim.tbl_map(function(entry)
+        return {
+          title = entry.title,
+          key = entry.key,
+          kind = entry.action.kind,
+        }
+      end, options)
+    )
 
     callback(options)
   end)
@@ -164,15 +179,15 @@ function Diagnostics:show(diagnostic)
   title_line:append(Text(string.upper(severity), highlight))
 
   self.main_buf = vim.api.nvim_get_current_buf()
+  self.main_window = vim.api.nvim_get_current_win()
 
   local linebuffer = make_diagnostic_lines(diagnostic, highlight)
+  local anchor, position, size = self:compute_position(linebuffer)
 
   self.popup = Popup({
-    size = {
-      width = linebuffer:width(),
-      height = linebuffer:height(),
-    },
-    position = { row = 2, col = 1 },
+    anchor = anchor,
+    position = position,
+    size = size,
     enter = false,
     focusable = true,
     zindex = 50,
@@ -218,14 +233,40 @@ function Diagnostics:show(diagnostic)
     local new_buffer = make_diagnostic_lines(diagnostic, highlight, actions)
     new_buffer:render(self.popup.bufnr)
 
+    local anchor, position, size = self:compute_position(new_buffer)
     self.popup:update_layout({
-      size = {
-        width = new_buffer:width(),
-        height = new_buffer:height(),
-      },
+      anchor = anchor,
+      position = position,
+      size = size,
     })
     self:setup_code_action_keys(actions)
   end)
+end
+
+---@param linebuffer LineBuffer
+function Diagnostics:compute_position(linebuffer)
+  local width = linebuffer:width()
+  local height = linebuffer:height()
+
+  -- get the cursor position from the bottom of the window
+  local winline = vim.fn.winline()
+  local winheight = vim.api.nvim_win_get_height(0)
+
+  local space_below = winheight - winline
+
+  local buffer = 5 + 2 -- for padding
+  local position = { row = 2, col = 1 }
+  local anchor = "NW"
+  if space_below < height + buffer then
+    anchor = "SW"
+    position = { row = 1, col = 1 }
+  end
+  local size = {
+    width = width,
+    height = height,
+  }
+
+  return anchor, position, size
 end
 
 function Diagnostics:setup_autocmds()
@@ -245,25 +286,29 @@ function Diagnostics:setup_autocmds()
   end, 0)
 
   -- Close popup on various events
-  self.main_buf_autocmd_group = vim.api.nvim_create_augroup(
-    "PopupAutoClose" .. self.popup.bufnr,
-    { clear = true }
-  )
   self.autocmd_group = vim.api.nvim_create_augroup(
     "PopupAutoClose" .. self.popup.bufnr,
     { clear = true }
   )
-  vim.api.nvim_create_autocmd(
-    { "BufHidden", "InsertCharPre", "WinLeave", "FocusLost" },
-    {
-      group = self.autocmd_group,
-      buffer = self.popup.bufnr,
-      once = true,
-      callback = function()
-        self:close()
-      end,
-    }
-  )
+
+  -- this is separate becuase it needs to be listened
+  -- to on another buffer
+  vim.api.nvim_create_autocmd({ "WinLeave" }, {
+    group = self.autocmd_group,
+    once = true,
+    callback = function()
+      self:close()
+    end,
+  })
+
+  vim.api.nvim_create_autocmd({ "BufHidden", "InsertCharPre", "FocusLost" }, {
+    group = self.autocmd_group,
+    buffer = self.popup.bufnr,
+    once = true,
+    callback = function()
+      self:close()
+    end,
+  })
 end
 
 function Diagnostics:setup_dismiss_keys()

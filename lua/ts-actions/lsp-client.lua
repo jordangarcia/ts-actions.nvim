@@ -10,6 +10,7 @@ LspClient.__index = LspClient
 
 ---@param opts? {}
 function LspClient:new(opts)
+  ---@diagnostic disable-next-line: redefined-local
   local self = setmetatable({}, LspClient)
   self.pending_request = false
   return self
@@ -61,15 +62,23 @@ function LspClient:request_code_actions(bufnr, options, callback)
   options = options or {}
   options["context"] = options["context"] or {}
 
+  if not options.context.triggerKind then
+    options.context.triggerKind = vim.lsp.protocol.CodeActionTriggerKind.Invoked
+  end
+
   if not options.context.diagnostics then
-    local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
-    options.context.diagnostics = lsp.diagnostic.get_line_diagnostics(
+    local line, col = unpack(api.nvim_win_get_cursor(0))
+    local line_diagnostics = lsp.diagnostic.get_line_diagnostics(
       api.nvim_get_current_buf(),
-      lnum,
+      line - 1,
       {},
       nil
     )
-    logger:log("got diag", options.context.diagnostics)
+
+    options.context.diagnostics = vim.tbl_filter(function(d)
+      return col >= d.range["start"].character
+        and col <= d.range["end"].character
+    end, line_diagnostics)
   end
 
   -- figure out the right range params to give to lsp client
@@ -214,7 +223,7 @@ local function get_diagnostic(opt)
   if opt.cursor then
     local res = {}
     for _, v in pairs(entrys) do
-      if v.col <= col and (v.end_col and v.end_col > col or true) then
+      if v.col <= col and (v.end_col and v.end_col > col) then
         res[#res + 1] = v
       end
     end
