@@ -3,7 +3,7 @@
 ---@field invalid_keys string[]
 ---@field override_function? fun(params: GetActionConfigParams): ActionConfig | nil
 ---@field priorities? ActionConfig[]
----@field valid_keys? string[] | string
+---@field valid_keys? string[]
 
 ---@class ActionConfig
 ---@field pattern string
@@ -49,3 +49,16 @@
 --
 ---@class ParsedConfig : Config
 ---@field keys string[]
+
+---@class CodeAction
+---@field title string
+---@field kind? string
+---@field isPreferred? boolean
+---@field diagnostics? Diagnostic[]
+---@field edit? table
+---@field command? table
+
+---@class CodeActionResult
+---@field client_id integer
+---@field client_name string
+---@field action CodeAction

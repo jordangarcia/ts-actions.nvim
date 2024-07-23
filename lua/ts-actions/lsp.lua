@@ -11,17 +11,6 @@
 ---@class GotoDiagnosticOpts
 ---@field severity? DiagnosticSeverity
 
----@class CodeAction
----@field title string
----@field kind? string
----@field isPreferred? boolean
----@field diagnostics? Diagnostic[]
----@field edit? table
----@field command? table
----@field client_id integer
----@field client_name string
----@field buffer integer
-
 local M = {}
 
 local textDocument_codeAction = "textDocument/codeAction"
@@ -119,12 +108,14 @@ function M.goto_next(opts)
   end
 end
 
+---@param CodeAction[] | nil
 ---@return CodeAction[] | nil
 local function request_code_action(params)
   local buffer = vim.api.nvim_get_current_buf()
   ---@type table<integer, {result: CodeAction[], error: table? }>?, string?
-  local results_lsp, err =
-    vim.lsp.buf_request_sync(buffer, "textDocument/codeAction", params, 10000)
+  local results_lsp, err = vim.lsp.buf_is_attached
+
+  vim.lsp.buf_request_sync(buffer, "textDocument/codeAction", params, 10000)
   if err then
     return vim.notify("ERROR: " .. err, vim.log.levels.ERROR)
   end

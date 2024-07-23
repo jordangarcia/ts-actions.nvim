@@ -1,6 +1,10 @@
+local config = require("ts-actions.config").config
+local logger = require("ts-actions.log")
+
 local event = require("nui.utils.autocmd").event
 local Line = require("nui.line")
 local LineBuffer = require("ts-actions.line-buffer")
+local LspClient = require("ts-actions.lsp-client")
 local Popup = require("nui.popup")
 local Text = require("nui.text")
 local keys = require("ts-actions.keys")
@@ -9,67 +13,121 @@ local utils = require("ts-actions.utils")
 
 ---@class Diagnostics
 ---@field popup any
+---@field client LspClient
 ---@field keymaps {key: string, mode: string[], buf: number}[]
 ---@field autocmd_group number|nil
----@field opts ParsedConfig
 local Diagnostics = {}
 Diagnostics.__index = Diagnostics
 
----@param opts ParsedConfig
-function Diagnostics:new(opts)
+function Diagnostics:new()
   local self = setmetatable({}, Diagnostics)
-  self.opts = opts
+  self.client = LspClient:new()
   self.popup = nil
   self.keymaps = {}
   self.autocmd_group = nil
   return self
 end
 
+---@param diagnostics Diagnostic[]
+---@param callback fun(actions: ActionOption[]): nil
 ---@return ActionOption[]
-function Diagnostics:get_code_actions()
-  local code_actions = lsp2.code_action() or {}
-  local used_keys = {}
-  ---@type ActionOption[]
-  local options = {}
+function Diagnostics:get_code_actions(diagnostics, callback)
+  local bufnr = vim.api.nvim_get_current_buf()
+  ---@type CodeActionOptions
+  local lsp_options = {
+    context = {
+      -- diagnostics = diagnostics,
+    },
+    apply = false,
+  }
 
-  for i, action in ipairs(code_actions) do
-    if action.title then
-      ---@type ActionOption
-      local option =
-        { action = action, order = 0, key = "", title = action.title }
-      local match = assert(
-        keys.get_action_config({
-          title = option.title,
-          priorities = self.opts.priority[vim.bo.filetype],
-          ---@type string[]
-          valid_keys = self.opts.keys,
-          invalid_keys = used_keys,
-          override_function = function(_) end,
-        }),
-        'Failed to find a key to map to "' .. option.title .. '"'
-      )
-      option.key = match.key
-      option.order = match.order
-      options[i] = option
+  self.client:request_code_actions(bufnr, lsp_options, function(code_actions)
+    logger:log(
+      "before sort",
+      vim.tbl_map(function(entry)
+        return {
+          title = entry.action.title,
+          kind = entry.action.kind,
+        }
+      end, code_actions)
+    )
+    -- table.sort(code_actions, function(a, b)
+    --   if a.action.kind ~= b.action.kind then
+    --     return a.action.kind < b.action.kind
+    --   end
+    --
+    --   return a.action.title < b.action.title
+    -- end)
+    --
+    local sorted = vim.tbl_map(function(entry)
+      return entry.action.title
+    end, code_actions)
+    logger:log("sorted --- ", sorted)
+    local used_keys = {}
+    ---@type ActionOption[]
+    local options = {}
+
+    for i, result in ipairs(code_actions) do
+      local action = result.action
+      if action.title then
+        local match = assert(
+          keys.get_action_config({
+            title = action.title,
+            priorities = config.priority[vim.bo.filetype],
+            valid_keys = config.keys,
+            invalid_keys = used_keys,
+            override_function = function(_) end,
+          }),
+          'Failed to find a key to map to "' .. action.title .. '"'
+        )
+        options[i] = {
+          action = action,
+          title = action.title,
+          order = match.order,
+          key = match.key,
+        }
+      end
     end
-  end
 
-  table.sort(options, function(a, b)
-    return a.order > b.order
-  end)
-
-  if self.opts.filter_function then
-    options = vim.tbl_filter(function(option)
-      return self.opts.filter_function(option.action)
+    local sorted2 = vim.tbl_map(function(entry)
+      return {
+        title = entry.title,
+        order = entry.order,
+        key = entry.key,
+      }
     end, options)
-  end
 
-  return options
+    logger:log("before", sorted2)
+    local by_priority = utils.priority_sort(options)
+    local after = vim.tbl_map(function(entry)
+      return {
+        title = entry.title,
+        order = entry.order,
+        key = entry.key,
+      }
+    end, by_priority)
+
+    logger:log("after", after)
+    -- table.sort(options, function(a, b)
+    --   return false
+    -- end)
+
+    -- logger:log("got options", options)
+
+    --TODO
+    -- if config.filter_function then
+    --   options = vim.tbl_filter(function(option)
+    --     return config.filter_function(option.action)
+    --   end, options)
+    -- end
+
+    callback(by_priority)
+  end)
 end
 
 ---@param diagnostic Diagnostic
 ---@param highlight string
----@param actions ActionOption[]
+---@param actions? ActionOption[]
 ---@return LineBuffer
 local function make_diagnostic_lines(diagnostic, highlight, actions)
   local linebuffer = LineBuffer:new({ max_width = 80, padding = 1 })
@@ -81,7 +139,7 @@ local function make_diagnostic_lines(diagnostic, highlight, actions)
     linebuffer:append(" " .. diagnostic_str, "Comment")
   end
 
-  if #actions == 0 then
+  if not actions or #actions == 0 then
     return linebuffer
   end
 
@@ -129,10 +187,9 @@ function Diagnostics:show(diagnostic)
   local title_line = Line()
   title_line:append(Text(string.upper(severity), highlight))
 
-  local code_actions = self:get_code_actions()
   self.main_buf = vim.api.nvim_get_current_buf()
 
-  local linebuffer = make_diagnostic_lines(diagnostic, highlight, code_actions)
+  local linebuffer = make_diagnostic_lines(diagnostic, highlight)
 
   self.popup = Popup({
     size = {
@@ -168,12 +225,30 @@ function Diagnostics:show(diagnostic)
   self.popup:mount()
 
   linebuffer:render(self.popup.bufnr)
-
   self:setup_autocmds()
-  self:setup_keymaps(code_actions)
+  self:setup_dismiss_keys()
   -- Close popup when cursor leaves the window
   self.popup:on(event.BufLeave, function()
     self:close()
+  end)
+
+  -- request code actions
+  self:get_code_actions({ diagnostic }, function(actions)
+    if not self.popup then
+      -- dont render if the popup has been closed
+      return
+    end
+    -- re-render the modal
+    local new_buffer = make_diagnostic_lines(diagnostic, highlight, actions)
+    new_buffer:render(self.popup.bufnr)
+
+    self.popup:update_layout({
+      size = {
+        width = new_buffer:width(),
+        height = new_buffer:height(),
+      },
+    })
+    self:setup_code_action_keys(actions)
   end)
 end
 
@@ -215,12 +290,11 @@ function Diagnostics:setup_autocmds()
   )
 end
 
----@param options ActionOption[]
-function Diagnostics:setup_keymaps(options)
+function Diagnostics:setup_dismiss_keys()
   -- Set key mappings to dismiss the popup in the current window
   local current_win = vim.api.nvim_get_current_win()
   local bufnr = vim.api.nvim_win_get_buf(current_win)
-  for _, key in ipairs(self.opts.dismiss_keys) do
+  for _, key in ipairs(config.dismiss_keys) do
     vim.keymap.set({ "n", "v" }, key, function()
       self:close()
     end, {
@@ -234,6 +308,12 @@ function Diagnostics:setup_keymaps(options)
       buf = bufnr,
     })
   end
+end
+
+---@param options ActionOption[]
+function Diagnostics:setup_code_action_keys(options)
+  local current_win = vim.api.nvim_get_current_win()
+  local bufnr = vim.api.nvim_win_get_buf(current_win)
 
   for i, option in ipairs(options) do
     vim.keymap.set("n", option.key, function()

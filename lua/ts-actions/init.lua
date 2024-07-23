@@ -1,8 +1,9 @@
-local M = {}
-local m = {}
-
+local Config = require("ts-actions.config")
 local Diagnostics = require("ts-actions.diagnostics")
 local lsp = require("ts-actions.lsp")
+
+local M = {}
+local m = {}
 
 ---@type Diagnostics
 m.diagnostics = nil
@@ -15,7 +16,6 @@ m.defaults = {
   override_function = function(_) end,
   priority = {},
   severity = {},
-  register_ui_select = false,
 }
 
 --- Show a selection prompt with the code actions available for the cursor
@@ -73,20 +73,16 @@ end
 ---
 
 function M.next(opts)
-  local opts = opts or {}
-  local severity = opts.severity or m.diagnostics.opts.severity[vim.bo.filetype]
+  opts = opts or {}
+  local severity = opts.severity or Config.config.severity[vim.bo.filetype]
   m.diagnostics:goto_next_and_show({ severity = severity })
 end
 
 ---@param opts Config
 function M.setup(opts)
-  local config = vim.tbl_deep_extend("force", m.defaults, opts or {})
-  -- if m.config.register_ui_select then vim.ui.select = M.select end
-  if type(config.keys) == "string" then
-    config.keys =
-      vim.split(config.keys --[=[@as string]=], "", { trimempty = true })
-  end
-  m.diagnostics = Diagnostics:new(config)
+  Config.setup(opts)
+
+  m.diagnostics = Diagnostics:new()
 end
 
 return M
