@@ -12,6 +12,7 @@
 
 ---@class ActionOption
 ---@field action CodeAction
+---@field client_id integer
 ---@field key string
 ---@field title string
 ---@field order integer

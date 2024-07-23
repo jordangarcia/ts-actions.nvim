@@ -51,12 +51,16 @@ end
 
 ---@param bufnr  number
 ---@param options CodeActionOptions
----@param callback fun(params: CodeActionResult[], options: CodeActionOptions)
+---@param callback fun(params: CodeActionResult[], options: CodeActionOptions): nil
 function LspClient:request_code_actions(bufnr, options, callback)
+  if self.pending_request then
+    vim.notify("Cannot request_code_actions, request pending")
+    return
+  end
+
   options = options or {}
   options["context"] = options["context"] or {}
 
-  logger:log("LSP: send request", options)
   if not options.context.diagnostics then
     local lnum = vim.api.nvim_win_get_cursor(0)[1] - 1
     options.context.diagnostics = lsp.diagnostic.get_line_diagnostics(
@@ -65,8 +69,8 @@ function LspClient:request_code_actions(bufnr, options, callback)
       {},
       nil
     )
+    logger:log("got diag", options.context.diagnostics)
   end
-  logger:log("LSP: send request", options)
 
   -- figure out the right range params to give to lsp client
   local mode = api.nvim_get_mode().mode
@@ -84,7 +88,6 @@ function LspClient:request_code_actions(bufnr, options, callback)
   else
     range = lsp.util.make_range_params()
   end
-  logger:log("LSP: range params", range)
 
   -- build the final params
   -- lsp.util.make_range_params adds the textDocument field
@@ -115,6 +118,83 @@ function LspClient:request_code_actions(bufnr, options, callback)
       callback(actions, options)
     end
   )
+end
+
+---@param client any
+---@param bufnr number
+---@return boolean
+function LspClient:supports_resolve(client, bufnr)
+  if vim.version().minor >= 10 then
+    local reg = client.dynamic_capabilities:get(
+      "textDocument/codeAction",
+      { bufnr = bufnr }
+    )
+    return vim.tbl_get(reg or {}, "registerOptions", "resolveProvider")
+      or client.supports_method("codeAction/resolve")
+  end
+  return vim.tbl_get(
+    client.server_capabilities,
+    "codeActionProvider",
+    "resolveProvider"
+  )
+end
+
+---@param action CodeAction
+---@param client any
+---@param ctx { bufnr: integer, client_id: integer }
+local function apply_action(action, client, ctx)
+  if action.edit then
+    vim.lsp.util.apply_workspace_edit(action.edit, client.offset_encoding)
+  end
+  if action.command then
+    local command = type(action.command) == "table" and action.command or action
+    local func = client.commands[command.command]
+      or vim.lsp.commands[command.command]
+    if func then
+      func(
+        command,
+        vim.tbl_deep_extend("force", {}, ctx, {
+          client_id = client.id,
+        })
+      )
+    else
+      local params = {
+        command = command.command,
+        arguments = command.arguments,
+        workDoneToken = command.workDoneToken,
+      }
+      client.request("workspace/executeCommand", params, nil, ctx.bufnr)
+    end
+  end
+end
+
+---@param action CodeAction
+---@param ctx { bufnr: integer, client_id: integer }
+function LspClient:apply_code_action(action, ctx)
+  local client = assert(vim.lsp.get_client_by_id(ctx.client_id))
+
+  ---@type boolean
+  local supports_resolve = false
+  ---@diagnostic disable-next-line: undefined-field
+  if action.data then
+    supports_resolve = self:supports_resolve(client, ctx.bufnr)
+  end
+
+  if not action.edit and client and supports_resolve then
+    client.request("codeAction/resolve", action, function(err, resolved_action)
+      if err then
+        if action.command then
+          apply_action(action, client, ctx)
+        else
+          vim.notify(err.code .. ": " .. err.message, vim.log.levels.ERROR)
+        end
+      else
+        apply_action(resolved_action, client, ctx)
+      end
+    end, ctx.bufnr)
+  else
+    apply_action(action, client, ctx)
+  end
 end
 
 return LspClient

@@ -30,10 +30,10 @@ end
 
 ---@param diagnostics Diagnostic[]
 ---@param callback fun(actions: ActionOption[]): nil
----@return ActionOption[]
 function Diagnostics:get_code_actions(diagnostics, callback)
   local bufnr = vim.api.nvim_get_current_buf()
   ---@type CodeActionOptions
+  logger:log("my diag", { diagnostics })
   local lsp_options = {
     context = {
       -- diagnostics = diagnostics,
@@ -43,26 +43,14 @@ function Diagnostics:get_code_actions(diagnostics, callback)
 
   self.client:request_code_actions(bufnr, lsp_options, function(code_actions)
     logger:log(
-      "before sort",
+      "raw actions",
       vim.tbl_map(function(entry)
         return {
-          title = entry.action.title,
-          kind = entry.action.kind,
+          title = entry.title,
+          kind = entry.kind,
         }
       end, code_actions)
     )
-    -- table.sort(code_actions, function(a, b)
-    --   if a.action.kind ~= b.action.kind then
-    --     return a.action.kind < b.action.kind
-    --   end
-    --
-    --   return a.action.title < b.action.title
-    -- end)
-    --
-    local sorted = vim.tbl_map(function(entry)
-      return entry.action.title
-    end, code_actions)
-    logger:log("sorted --- ", sorted)
     local used_keys = {}
     ---@type ActionOption[]
     local options = {}
@@ -82,6 +70,7 @@ function Diagnostics:get_code_actions(diagnostics, callback)
         )
         options[i] = {
           action = action,
+          client_id = result.client_id,
           title = action.title,
           order = match.order,
           key = match.key,
@@ -89,39 +78,24 @@ function Diagnostics:get_code_actions(diagnostics, callback)
       end
     end
 
-    local sorted2 = vim.tbl_map(function(entry)
-      return {
-        title = entry.title,
-        order = entry.order,
-        key = entry.key,
-      }
-    end, options)
+    options = utils.priority_sort(options)
+    logger:log(
+      "actions",
+      vim.tbl_map(function(entry)
+        return {
+          title = entry.title,
+          key = entry.key,
+        }
+      end, options)
+    )
 
-    logger:log("before", sorted2)
-    local by_priority = utils.priority_sort(options)
-    local after = vim.tbl_map(function(entry)
-      return {
-        title = entry.title,
-        order = entry.order,
-        key = entry.key,
-      }
-    end, by_priority)
+    if config.filter_function then
+      options = vim.tbl_filter(function(option)
+        return config.filter_function(option.action)
+      end, options)
+    end
 
-    logger:log("after", after)
-    -- table.sort(options, function(a, b)
-    --   return false
-    -- end)
-
-    -- logger:log("got options", options)
-
-    --TODO
-    -- if config.filter_function then
-    --   options = vim.tbl_filter(function(option)
-    --     return config.filter_function(option.action)
-    --   end, options)
-    -- end
-
-    callback(by_priority)
+    callback(options)
   end)
 end
 
@@ -317,7 +291,10 @@ function Diagnostics:setup_code_action_keys(options)
 
   for i, option in ipairs(options) do
     vim.keymap.set("n", option.key, function()
-      lsp2.execute_command(option.action)
+      self.client:apply_code_action(option.action, {
+        bufnr = self.main_buf,
+        client_id = option.client_id,
+      })
       self:close()
     end, {
       buffer = bufnr,
