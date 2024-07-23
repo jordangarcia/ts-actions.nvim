@@ -1,4 +1,4 @@
-local logger = require("ts-actions.log")
+local logger = require("ts-actions.logger")
 local utils = require("ts-actions.utils")
 local api = vim.api
 local lsp = vim.lsp
@@ -55,7 +55,7 @@ end
 ---@param callback fun(params: CodeActionResult[], options: CodeActionOptions): nil
 function LspClient:request_code_actions(bufnr, options, callback)
   if self.pending_request then
-    vim.notify("Cannot request_code_actions, request pending")
+    vim.notify("textDocument/codeAction request pending")
     return
   end
 
@@ -102,6 +102,7 @@ function LspClient:request_code_actions(bufnr, options, callback)
   -- lsp.util.make_range_params adds the textDocument field
   local final_params = vim.tbl_deep_extend("keep", options, range)
 
+  logger:log("requesting code actions", final_params)
   self.pending_request = true
 
   -- TODO accum all here

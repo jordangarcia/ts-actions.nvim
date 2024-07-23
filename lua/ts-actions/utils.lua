@@ -1,4 +1,3 @@
-local logger = require("ts-actions.log")
 local M = {}
 
 function M.concat_tables(...)
@@ -82,9 +81,9 @@ function M.range_from_selection(bufnr, mode)
 end
 
 ---@generic T
----@param tbl table<string, T>
+---@param tbl T
 ---@param field? string
----@return table<string, T>
+---@return T
 function M.priority_sort(tbl, field)
   field = field or "order"
   local res = {}
@@ -92,7 +91,6 @@ function M.priority_sort(tbl, field)
   for i, v in ipairs(tbl) do
     local inserted = false
     local same = false
-    logger:log("inserting", v.title)
     for i2, v2 in ipairs(res) do
       if v[field] > v2[field] then
         -- replace

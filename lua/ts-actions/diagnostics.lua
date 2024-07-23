@@ -1,8 +1,7 @@
 ---@type ParsedConfig
 local config = require("ts-actions.config")
-local logger = require("ts-actions.log")
+local logger = require("ts-actions.logger")
 
-local event = require("nui.utils.autocmd").event
 local Line = require("nui.line")
 local LineBuffer = require("ts-actions.line-buffer")
 local LspClient = require("ts-actions.lsp-client")
@@ -16,7 +15,6 @@ local utils = require("ts-actions.utils")
 ---@field client LspClient
 ---@field keymaps {key: string, mode: string[], buf: number}[]
 ---@field main_buf number|nil
----@field main_window number|nil
 ---@field autocmd_group number|nil
 local Diagnostics = {}
 Diagnostics.__index = Diagnostics
@@ -28,7 +26,6 @@ function Diagnostics:new()
   self.keymaps = {}
   self.autocmd_group = nil
   self.main_buf = nil
-  self.main_window = nil
   return self
 end
 
@@ -37,7 +34,6 @@ end
 function Diagnostics:get_code_actions(diagnostics, callback)
   local bufnr = vim.api.nvim_get_current_buf()
   ---@type CodeActionOptions
-  logger:log("my diag", { diagnostics })
   local lsp_options = {
     context = {
       -- diagnostics = diagnostics,
@@ -46,15 +42,6 @@ function Diagnostics:get_code_actions(diagnostics, callback)
   }
 
   self.client:request_code_actions(bufnr, lsp_options, function(code_actions)
-    logger:log(
-      "raw actions",
-      vim.tbl_map(function(entry)
-        return {
-          title = entry.title,
-          kind = entry.kind,
-        }
-      end, code_actions)
-    )
     local used_keys = {}
     ---@type ActionOption[]
     local options = {}
@@ -84,7 +71,7 @@ function Diagnostics:get_code_actions(diagnostics, callback)
 
     options = utils.priority_sort(options)
     logger:log(
-      "actions",
+      "actions (unfiltered)",
       vim.tbl_map(function(entry)
         return {
           title = entry.title,
@@ -99,16 +86,6 @@ function Diagnostics:get_code_actions(diagnostics, callback)
         return config.filter_function(option.action)
       end, options)
     end
-    logger:log(
-      "after filter",
-      vim.tbl_map(function(entry)
-        return {
-          title = entry.title,
-          key = entry.key,
-          kind = entry.action.kind,
-        }
-      end, options)
-    )
 
     callback(options)
   end)
@@ -201,7 +178,6 @@ function Diagnostics:show(diagnostic)
   title_line:append(Text(string.upper(severity), highlight))
 
   self.main_buf = vim.api.nvim_get_current_buf()
-  self.main_window = vim.api.nvim_get_current_win()
 
   local linebuffer = make_diagnostic_lines(diagnostic, highlight)
   local anchor, position, size = self:compute_position(linebuffer)
@@ -238,12 +214,9 @@ function Diagnostics:show(diagnostic)
   self.popup:mount()
 
   linebuffer:render(self.popup.bufnr)
+
   self:setup_autocmds()
   self:setup_dismiss_keys()
-  -- Close popup when cursor leaves the window
-  self.popup:on(event.BufLeave, function()
-    self:close()
-  end)
 
   -- request code actions
   self:get_code_actions({ diagnostic }, function(actions)
@@ -251,6 +224,7 @@ function Diagnostics:show(diagnostic)
       -- dont render if the popup has been closed
       return
     end
+
     -- re-render the modal
     local new_buffer = make_diagnostic_lines(diagnostic, highlight, actions)
     new_buffer:render(self.popup.bufnr)
@@ -261,6 +235,7 @@ function Diagnostics:show(diagnostic)
       position = position,
       size = size,
     })
+
     self:setup_code_action_keys(actions)
   end)
 end

@@ -1,8 +1,5 @@
-local c = {
-  config = {
-    log_level = "info",
-  },
-}
+local PLUGIN_NAME = "ts-actions"
+local config = require("ts-actions.config")
 
 ---@class Log
 local log = {}
@@ -28,7 +25,7 @@ local create_log_file = function()
   if log_path ~= nil then
     return
   end
-  log_path = join_path(vim.fn.stdpath("cache"), "ts-actions.log")
+  log_path = join_path(vim.fn.stdpath("cache"), PLUGIN_NAME .. ".log")
   local file = io.open(log_path, "w")
   if file == nil then
     error("Failed to create log file: " .. log_path)
@@ -59,15 +56,13 @@ end
 ---@param level LogLevel: The log level
 ---@param msg string: The log message
 function log:add_entry(level, msg)
-  local conf = c.config
-
   if not self.__notify_fmt then
     self.__notify_fmt = function(message)
-      return string.format(string.format("[supermaven-nvim] %s", message))
+      return string.format(string.format("[%s] %s", PLUGIN_NAME, message))
     end
   end
 
-  if conf.log_level == "off" then
+  if config.log_level == "off" then
     return
   end
 
@@ -76,18 +71,12 @@ function log:add_entry(level, msg)
   end
 
   self:write_log_file(level, msg)
-  -- stop showing sit all the time
-  -- if conf.log_level ~= "error" and conf.log_level ~= "warn" then
-  --   if level ~= "error" and level ~= "warn" then
-  --     print(self.__notify_fmt(msg))
-  --   end
-  -- end
 end
 
 --- Returns the path to the log file
 ---@return string|nil: The path to the log file or nil if it doesn't exist
 function log:get_log_path()
-  local log_path = join_path(vim.fn.stdpath("cache"), "ts-actions.log")
+  local log_path = join_path(vim.fn.stdpath("cache"), PLUGIN_NAME .. ".log")
   if vim.fn.filereadable(log_path) == 0 then
     return nil
   end
@@ -100,7 +89,7 @@ end
 ---@param extra any:
 function log:log(msg, extra)
   if extra ~= nil then
-    local enriched_msg = vim.fn.printf("%s %s", msg, vim.inspect(extra))
+    local enriched_msg = vim.fn.printf("%s\n%s", msg, vim.inspect(extra))
     self:add_entry("log", enriched_msg)
   else
     self:add_entry("log", msg)
