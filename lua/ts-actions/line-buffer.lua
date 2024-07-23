@@ -4,7 +4,7 @@ local Text = require("nui.text")
 ---@class LineBuffer
 ---@field lines Line[]
 ---@field current_line Line|nil
----@field divider_indices table<number, {char: string, highlight: string|nil}>
+---@field divider_indices table<number, {char: string, highlight: string|nil, index: integer}>
 ---@field max_width number
 ---@field padding number
 local LineBuffer = {}
@@ -111,15 +111,7 @@ function LineBuffer:render(bufnr)
     self.current_line = nil
   end
 
-  local total_width = self:width()
-
-  -- Fill in dividers
-  for _, divider in ipairs(self.divider_indices) do
-    self.lines[divider.index] = Line()
-    self.lines[divider.index]:append(
-      Text(string.rep(divider.char, total_width), divider.highlight)
-    )
-  end
+  local divider_width = self:width() - (2 * self.padding)
 
   -- Render lines
   for i, line in ipairs(self.lines) do
@@ -138,8 +130,23 @@ function LineBuffer:render(bufnr)
       padded_line:append(Text(string.rep(" ", self.padding)))
       padded_line:render(bufnr, -1, i)
     else
-      -- This is a divider line
-      line:render(bufnr, -1, i)
+      local divider = vim.tbl_filter(function(d)
+        return d.index == i
+      end, self.divider_indices)[1]
+
+      local padded_line = Line()
+      padded_line:append(
+        -- Text(string.rep(divider.char, self.padding), divider.highlight)
+        Text(string.rep(" ", self.padding), divider.highlight)
+      )
+      padded_line:append(
+        Text(string.rep(divider.char, divider_width), divider.highlight)
+      )
+      padded_line:append(
+        -- Text(string.rep(divider.char, self.padding), divider.highlight)
+        Text(string.rep(" ", self.padding), divider.highlight)
+      )
+      padded_line:render(bufnr, -1, i)
     end
   end
 end
@@ -147,7 +154,7 @@ end
 ---@return number
 function LineBuffer:width()
   local max_width = 0
-  for _, line in ipairs(self.lines) do
+  for i, line in ipairs(self.lines) do
     max_width = math.max(max_width, line:width())
   end
   if self.current_line then
