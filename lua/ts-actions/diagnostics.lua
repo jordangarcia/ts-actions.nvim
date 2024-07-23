@@ -1,4 +1,5 @@
-local config = require("ts-actions.config").config
+---@type ParsedConfig
+local config = require("ts-actions.config")
 local logger = require("ts-actions.log")
 
 local event = require("nui.utils.autocmd").event
@@ -8,7 +9,6 @@ local LspClient = require("ts-actions.lsp-client")
 local Popup = require("nui.popup")
 local Text = require("nui.text")
 local keys = require("ts-actions.keys")
-local lsp2 = require("ts-actions.lsp")
 local utils = require("ts-actions.utils")
 
 ---@class Diagnostics
@@ -137,8 +137,10 @@ function Diagnostics:goto_next_and_show(opts)
 
   local check_cursor = not self.popup
 
-  local next_diagnostic =
-    lsp2.get_next({ severity = severity, check_cursor = check_cursor })
+  local next_diagnostic = self.client:get_next_diagnostic({
+    severity = severity,
+    check_cursor = check_cursor,
+  })
 
   if next_diagnostic then
     vim.api.nvim_win_set_cursor(

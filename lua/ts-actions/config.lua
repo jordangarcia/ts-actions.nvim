@@ -1,3 +1,4 @@
+local logger = require("ts-actions.log")
 ---@type ParsedConfig
 local default_config = {
   dismiss_keys = { "<esc>", "<c-c>", "q" },
@@ -10,6 +11,9 @@ local default_config = {
   priority = {},
   severity = {},
   log_level = "info",
+  -- filter_function = function(action)
+  --   return true
+  -- end,
 }
 
 local M = {
@@ -17,13 +21,25 @@ local M = {
   config = vim.deepcopy(default_config),
 }
 
+---@param args ParsedConfig
 M.setup = function(args)
+  logger:log("setup", M.config)
   if type(args.keys) == "string" then
     args.keys =
       vim.split(config.keys --[=[@as string]=], "", { trimempty = true })
   end
 
   M.config = vim.tbl_deep_extend("force", vim.deepcopy(default_config), args)
+  if args.filter_function then
+    M.config.filter_function = args.filter_function
+  end
 end
 
-return M
+return setmetatable(M, {
+  __index = function(_, key)
+    if key == "setup" then
+      return M.setup
+    end
+    return rawget(M.config, key)
+  end,
+})

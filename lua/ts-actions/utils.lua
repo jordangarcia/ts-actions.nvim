@@ -72,7 +72,7 @@ function M.range_from_selection(bufnr, mode)
   end
   if mode == "V" then
     start_col = 1
-    local lines = api.nvim_buf_get_lines(bufnr, end_row - 1, end_row, true)
+    local lines = vim.api.nvim_buf_get_lines(bufnr, end_row - 1, end_row, true)
     end_col = #lines[1]
   end
   return {

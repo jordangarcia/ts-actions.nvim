@@ -1,4 +1,8 @@
-local c = require("ts-actions.config")
+local c = {
+  config = {
+    log_level = "info",
+  },
+}
 
 ---@class Log
 local log = {}

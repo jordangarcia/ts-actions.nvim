@@ -1,5 +1,3 @@
-local config = require("ts-actions.config").config
-
 local M = {}
 local m = {}
 

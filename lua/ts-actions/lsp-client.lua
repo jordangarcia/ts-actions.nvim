@@ -95,6 +95,7 @@ function LspClient:request_code_actions(bufnr, options, callback)
 
   self.pending_request = true
 
+  -- TODO accum all here
   lsp.buf_request_all(
     bufnr,
     "textDocument/codeAction",
@@ -195,6 +196,66 @@ function LspClient:apply_code_action(action, ctx)
   else
     apply_action(action, client, ctx)
   end
+end
+
+---get the line or cursor diagnostics
+---@param opt table
+---@return Diagnostic[]
+local function get_diagnostic(opt)
+  local cur_buf = vim.api.nvim_get_current_buf()
+  if opt.buffer then
+    return vim.diagnostic.get(cur_buf)
+  end
+  local line, col = unpack(vim.api.nvim_win_get_cursor(0))
+  local entrys = vim.diagnostic.get(cur_buf, { lnum = line - 1 })
+  if opt.line then
+    return entrys
+  end
+  if opt.cursor then
+    local res = {}
+    for _, v in pairs(entrys) do
+      if v.col <= col and (v.end_col and v.end_col > col or true) then
+        res[#res + 1] = v
+      end
+    end
+    return res
+  end
+  return vim.diagnostic.get()
+end
+
+---@class GetNextOpts
+---@field severity? DiagnosticSeverity
+---@field check_cursor? boolean
+
+---@class GotoDiagnosticOpts
+---@field severity? DiagnosticSeverity
+
+---@param opts? GetNextOpts
+---@return Diagnostic|nil
+function LspClient:get_next_diagnostic(opts)
+  opts = opts or {}
+  local severity = opts.severity or vim.diagnostic.severity.ERROR
+  local check_cursor = opts.check_cursor or false
+
+  if check_cursor then
+    local cursor_diagnostics = get_diagnostic({ cursor = true })
+    if #cursor_diagnostics > 0 then
+      -- Find the diagnostic with the highest severity (lowest severity number)
+      local highest_severity_diag = cursor_diagnostics[1]
+      for _, diag in ipairs(cursor_diagnostics) do
+        if diag.severity < highest_severity_diag.severity then
+          highest_severity_diag = diag
+        end
+      end
+      return highest_severity_diag
+    end
+  end
+
+  return vim.diagnostic.get_next({
+    severity = { min = severity },
+    wrap = true,
+    float = false,
+  })
 end
 
 return LspClient
