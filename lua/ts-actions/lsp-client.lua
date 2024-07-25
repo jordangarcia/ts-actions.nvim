@@ -75,9 +75,34 @@ function LspClient:request_code_actions(bufnr, options, callback)
       nil
     )
 
+    logger:log("line_diagnostics", line_diagnostics)
+
     options.context.diagnostics = vim.tbl_filter(function(d)
-      return col >= d.range["start"].character
-        and col <= d.range["end"].character
+      local is_multiline = d.range["end"].line
+        and d.range["start"].line ~= d.range["end"].line
+
+      local on_start_line = d.range["start"].line + 1 == line
+      local on_end_line = d.range["end"].line + 1 == line
+
+      if
+        not is_multiline
+          and d.range["start"].character <= col
+          and d.range["end"].character >= col
+        or true
+      then
+        return true
+      elseif
+        is_multiline and on_start_line and d.range["start"].character <= col
+        or true
+      then
+        return true
+      elseif
+        is_multiline
+        and on_end_line
+        and d.range["end"].character >= col
+      then
+        return true
+      end
     end, line_diagnostics)
   end
 
@@ -213,6 +238,7 @@ end
 ---@return Diagnostic[]
 local function get_diagnostic(opt)
   local cur_buf = vim.api.nvim_get_current_buf()
+  local buf_diags = vim.diagnostic.get(cur_buf)
   if opt.buffer then
     return vim.diagnostic.get(cur_buf)
   end
@@ -221,16 +247,70 @@ local function get_diagnostic(opt)
   if opt.line then
     return entrys
   end
+
   if opt.cursor then
+    logger:log("CURSOR DIAG", {
+      entrys = entrys,
+    })
     local res = {}
-    for _, v in pairs(entrys) do
-      if v.col <= col and (v.end_col and v.end_col > col) then
+    for _, v in pairs(buf_diags) do
+      local is_multiline = v.end_lnum and v.lnum ~= v.end_lnum
+
+      local in_line_range = v.lnum + 1 <= line and v.end_lnum + 1 >= line
+      local on_start_line = v.lnum + 1 == line
+      local on_end_line = v.end_lnum + 1 == line
+
+      if not in_line_range then
+        logger:log("not in line range")
+      elseif
+        not is_multiline
+        and v.col <= col
+        and v.end_col
+        and v.end_col > col
+      then
+        res[#res + 1] = v
+      elseif is_multiline and on_start_line and v.col <= col then
+        res[#res + 1] = v
+      elseif
+        is_multiline and on_end_line and v.end_col and v.end_col > col or true
+      then
+        res[#res + 1] = v
+      elseif is_multiline then
         res[#res + 1] = v
       end
+
+      logger:log("jordan doit diag", {
+        cursor = {
+          line = line,
+          col = col,
+        },
+        entry = v,
+        is_multiline = is_multiline,
+        in_line_range = in_line_range,
+        on_start_line = on_start_line,
+        on_end_line = on_end_line,
+      })
+      --
+      -- if
+      --   is_multiline
+      --   and v.col <= col
+      --   and v.lnum + 1 >= line
+      --   and v.end_lnum + 1 <= line
+      -- then
+      --   res[#res + 1] = v
+      -- elseif
+      --   not is_multiline
+      --   and v.col <= col
+      --   and v.lnum + 1 >= line
+      --   and v.end_lnum + 1 <= line
+      --   and (v.end_col and v.end_col > col or true)
+      -- then
+      --   res[#res + 1] = v
+      -- end
     end
     return res
   end
-  return vim.diagnostic.get()
+  return buf_diags
 end
 
 ---@class GetNextOpts

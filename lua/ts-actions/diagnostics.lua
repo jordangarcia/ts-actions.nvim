@@ -149,22 +149,39 @@ function Diagnostics:goto_next_and_show(opts)
   opts = opts or {}
   local severity = opts.severity or vim.diagnostic.severity.ERROR
 
-  local check_cursor = not self.popup
-
-  local next_diagnostic = self.client:get_diagnostic({
+  local incursor = self.client:get_diagnostic({
     severity = severity,
-    pos = check_cursor and "cursor" or "next",
+    pos = "cursor",
   })
+  local entry
 
-  if next_diagnostic then
-    vim.api.nvim_win_set_cursor(
-      0,
-      { next_diagnostic.lnum + 1, next_diagnostic.col }
-    )
-    self:show(next_diagnostic)
+  if incursor and not self.popup then
+    logger:log("incursor and not popup", incursor)
+    entry = incursor
   else
+    logger:log("going to next", incursor)
+    entry = self.client:get_diagnostic({
+      severity = severity,
+      pos = "next",
+    })
+  end
+
+  if entry then
+    vim.api.nvim_win_set_cursor(0, { entry.lnum + 1, entry.col })
+    self:show(entry)
+  elseif self.popup then
     self:close()
   end
+  -- if not next_diagnostic then
+  --   self:close()
+  --   return
+  -- end
+  --
+  -- vim.api.nvim_win_set_cursor(
+  --   0,
+  --   { next_diagnostic.lnum + 1, next_diagnostic.col }
+  -- )
+  -- self:show(next_diagnostic)
 end
 
 function Diagnostics:show(diagnostic)
