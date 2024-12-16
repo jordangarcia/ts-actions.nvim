@@ -84,16 +84,25 @@ function LspClient:request_code_actions(bufnr, options, callback)
       local on_start_line = d.range["start"].line + 1 == line
       local on_end_line = d.range["end"].line + 1 == line
 
+      logger:log("code actions diags", {
+        line = line,
+        col = col,
+        is_multiline = is_multiline,
+        on_start_line = on_start_line,
+        on_end_line = on_end_line,
+        d = d,
+      })
+
       if
         not is_multiline
-          and d.range["start"].character <= col
-          and d.range["end"].character >= col
-        or true
+        and d.range["start"].character <= col
+        and d.range["end"].character >= col
       then
         return true
       elseif
-        is_multiline and on_start_line and d.range["start"].character <= col
-        or true
+        is_multiline
+        and on_start_line
+        and d.range["start"].character <= col
       then
         return true
       elseif
@@ -103,6 +112,8 @@ function LspClient:request_code_actions(bufnr, options, callback)
       then
         return true
       end
+
+      return false
     end, line_diagnostics)
   end
 
@@ -249,9 +260,6 @@ local function get_diagnostic(opt)
   end
 
   if opt.cursor then
-    logger:log("CURSOR DIAG", {
-      entrys = entrys,
-    })
     local res = {}
     for _, v in pairs(buf_diags) do
       local is_multiline = v.end_lnum and v.lnum ~= v.end_lnum
@@ -279,17 +287,6 @@ local function get_diagnostic(opt)
         res[#res + 1] = v
       end
 
-      logger:log("jordan doit diag", {
-        cursor = {
-          line = line,
-          col = col,
-        },
-        entry = v,
-        is_multiline = is_multiline,
-        in_line_range = in_line_range,
-        on_start_line = on_start_line,
-        on_end_line = on_end_line,
-      })
       --
       -- if
       --   is_multiline
