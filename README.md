@@ -6,8 +6,6 @@
   making your workflow more efficient.
 - **Priority Handling**: Customize the display order of actions based on
   priority, ensuring the most used actions are always visible on top.
-- **Flexible Selection**: Extendable selection prompt that can replace Neovim's
-  built-in `vim.ui.select`, providing more versatility in how you interact with lists
 
 ## Installation + Example Config
 
@@ -32,7 +30,6 @@ local ts_priority_f = {
 return {
   {
     "jordangarcia/ts-actions.nvim",
-    dir = "~/code/ts-actions.nvim",
     event = "VeryLazy",
     keys = {
       {
