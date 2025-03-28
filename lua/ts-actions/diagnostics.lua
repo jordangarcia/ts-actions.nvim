@@ -49,23 +49,25 @@ function Diagnostics:get_code_actions(diagnostics, callback)
     for i, result in ipairs(code_actions) do
       local action = result.action
       if action.title then
-        local match = assert(
-          keys.get_action_config({
-            title = action.title,
-            priorities = config.priority[vim.bo.filetype],
-            valid_keys = config.keys,
-            invalid_keys = used_keys,
-            override_function = function(_) end,
-          }),
-          'Failed to find a key to map to "' .. action.title .. '"'
-        )
-        options[i] = {
-          action = action,
-          client_id = result.client_id,
+        local match = keys.get_action_config({
           title = action.title,
-          order = match.order,
-          key = match.key,
-        }
+          priorities = config.priority[vim.bo.filetype],
+          valid_keys = config.keys,
+          invalid_keys = used_keys,
+          override_function = function(_) end,
+        })
+
+        if match then
+          options[i] = {
+            action = action,
+            client_id = result.client_id,
+            title = action.title,
+            order = match.order,
+            key = match.key,
+          }
+        else
+          logger:log("Unable to find key for action: " .. action.title)
+        end
       end
     end
 
@@ -374,7 +376,9 @@ end
 function Diagnostics:close()
   -- Clean up keymaps
   for _, keymap in ipairs(self.keymaps) do
-    vim.keymap.del(keymap.mode, keymap.key, { buffer = keymap.buf })
+    -- NOTE: this is a workaround for a keymap being introduced that isn't actually bound
+    -- when calling self:get_code_actions(), introduced when we filter out the actions
+    pcall(vim.keymap.del, keymap.mode, keymap.key, { buffer = keymap.buf })
   end
   self.keymaps = {}
 
