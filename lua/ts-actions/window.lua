@@ -104,12 +104,24 @@ function M.popup_window(content, on_buf_create, opts)
 
   local buffer = vim.api.nvim_create_buf(false, true)
   vim.api.nvim_buf_set_lines(buffer, 0, -1, true, content)
-  vim.api.nvim_buf_add_highlight(buffer, m.namespace, opts.highlight.title, 0, 0, -1)
-  vim.api.nvim_buf_add_highlight(buffer, m.namespace, opts.highlight.divider, 1, 0, -1)
+  vim.api.nvim_buf_set_extmark(buffer, m.namespace, 0, 0, {
+    end_line = 0,
+    end_col = -1,
+    hl_group = opts.highlight.title
+  })
+  vim.api.nvim_buf_set_extmark(buffer, m.namespace, 1, 0, {
+    end_line = 1,
+    end_col = -1,
+    hl_group = opts.highlight.divider
+  })
 
   local line = 2 -- avoid the title and the divider i.e. start at line 2
   for _, _ in pairs(content) do
-    vim.api.nvim_buf_add_highlight(buffer, m.namespace, "MoreMsg", line, 0, 4)
+    vim.api.nvim_buf_set_extmark(buffer, m.namespace, line, 0, {
+      end_line = line,
+      end_col = 4,
+      hl_group = "MoreMsg"
+    })
     line = line + 1
   end
   vim.api.nvim_set_option_value("modifiable", false, { buf = buffer })

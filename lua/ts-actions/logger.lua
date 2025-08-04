@@ -99,8 +99,13 @@ end
 --- Logs a warning message to the log file
 ---@example log:warn("Something went wrong!")
 ---@param msg string: The log message
-function log:warn(msg)
-  self:add_entry("warn", msg)
+---@param extra any:
+function log:warn(msg, extra)
+  local final_msg = msg
+  if extra ~= nil then
+    final_msg = vim.fn.printf("%s\n%s", msg, vim.inspect(extra))
+  end
+  self:add_entry("warn", final_msg)
   vim.api.nvim_notify(
     self.__notify_fmt(msg),
     vim.log.levels.WARN,
@@ -111,8 +116,13 @@ end
 --- Logs an error message to the log file
 ---@example log:error("Something went wrong!")
 ---@param msg string: The log message
-function log:error(msg)
-  self:add_entry("error", msg)
+---@param extra any:
+function log:error(msg, extra)
+  local final_msg = msg
+  if extra ~= nil then
+    final_msg = vim.fn.printf("%s\n%s", msg, vim.inspect(extra))
+  end
+  self:add_entry("error", final_msg)
   vim.api.nvim_notify(
     self.__notify_fmt(msg),
     vim.log.levels.ERROR,
@@ -125,8 +135,13 @@ end
 --- This is the level use to log information to the user as default.
 ---@example log:info("Something happened!")
 ---@param msg string: The log message
-function log:info(msg)
-  self:add_entry("info", msg)
+---@param extra any:
+function log:info(msg, extra)
+  local final_msg = msg
+  if extra ~= nil then
+    final_msg = vim.fn.printf("%s\n%s", msg, vim.inspect(extra))
+  end
+  self:add_entry("info", final_msg)
 end
 
 --- Logs a debug message to the log file
@@ -136,8 +151,13 @@ end
 --- Only visible if the `debug` option is set to `true`.
 ---@example log:debug("Debugging...")
 ---@param msg string: The log message
-function log:debug(msg)
-  self:add_entry("debug", msg)
+---@param extra any:
+function log:debug(msg, extra)
+  local final_msg = msg
+  if extra ~= nil then
+    final_msg = vim.fn.printf("%s\n%s", msg, vim.inspect(extra))
+  end
+  self:add_entry("debug", final_msg)
 end
 
 --- Logs a trace message to the log file

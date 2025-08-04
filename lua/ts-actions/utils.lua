@@ -31,7 +31,7 @@ function M.clean_action_title(msg)
   return msg
 end
 
----@param diagnostic Diagnostic
+---@param diagnostic vim.Diagnostic
 function M.diagnostic_source_str(diagnostic)
   local source_code_str = ""
   if diagnostic.source then
@@ -50,7 +50,7 @@ end
 ---@private
 ---@param bufnr integer
 ---@param mode "v"|"V"
----@return table {start={row, col}, end={row, col}} using (1, 0) indexing
+---@return {start: {integer, integer}, end: {integer, integer}} using (1, 0) indexing
 function M.range_from_selection(bufnr, mode)
   -- TODO: Use `vim.region()` instead https://github.com/neovim/neovim/pull/13896
   -- [bufnum, lnum, col, off]; both row and column 1-indexed

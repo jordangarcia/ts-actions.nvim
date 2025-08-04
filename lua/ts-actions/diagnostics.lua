@@ -29,68 +29,65 @@ function Diagnostics:new()
   return self
 end
 
----@param diagnostics Diagnostic[]
+---@param diagnostics vim.Diagnostic[]
 ---@param callback fun(actions: ActionOption[]): nil
 function Diagnostics:get_code_actions(diagnostics, callback)
   local bufnr = vim.api.nvim_get_current_buf()
-  ---@type CodeActionOptions
-  local lsp_options = {
-    context = {
-      -- diagnostics = diagnostics,
-    },
-    apply = false,
-  }
 
-  self.client:request_code_actions(bufnr, lsp_options, function(code_actions)
-    local used_keys = {}
-    ---@type ActionOption[]
-    local options = {}
+  self.client:request_code_actions(
+    bufnr,
+    vim.lsp.diagnostic.from(diagnostics),
+    function(code_actions)
+      local used_keys = {}
+      ---@type ActionOption[]
+      local options = {}
 
-    for i, result in ipairs(code_actions) do
-      local action = result.action
-      if action.title then
-        local match = keys.get_action_config({
-          title = action.title,
-          priorities = config.priority[vim.bo.filetype],
-          valid_keys = config.keys,
-          invalid_keys = used_keys,
-          override_function = function(_) end,
-        })
-
-        if match then
-          options[i] = {
-            action = action,
-            client_id = result.client_id,
+      for i, result in ipairs(code_actions) do
+        local action = result.action
+        if action.title then
+          local match = keys.get_action_config({
             title = action.title,
-            order = match.order,
-            key = match.key,
-          }
-        else
-          logger:log("Unable to find key for action: " .. action.title)
+            priorities = config.priority[vim.bo.filetype],
+            valid_keys = config.keys,
+            invalid_keys = used_keys,
+            override_function = function(_) end,
+          })
+
+          if match then
+            options[i] = {
+              action = action,
+              client_id = result.client_id,
+              title = action.title,
+              order = match.order,
+              key = match.key,
+            }
+          else
+            logger:log("Unable to find key for action: " .. action.title)
+          end
         end
       end
+
+      options = utils.priority_sort(options)
+      -- logger:log(
+      --   "actions (unfiltered)",
+      --   vim.tbl_map(function(entry)
+      --     return {
+      --       title = entry.title,
+      --       key = entry.key,
+      --       kind = entry.action.kind,
+      --     }
+      --   end, options)
+      -- )
+
+      if config.filter_function then
+        options = vim.tbl_filter(function(option)
+          return config.filter_function(option.action)
+        end, options)
+      end
+
+      callback(options)
     end
-
-    options = utils.priority_sort(options)
-    logger:log(
-      "actions (unfiltered)",
-      vim.tbl_map(function(entry)
-        return {
-          title = entry.title,
-          key = entry.key,
-          kind = entry.action.kind,
-        }
-      end, options)
-    )
-
-    if config.filter_function then
-      options = vim.tbl_filter(function(option)
-        return config.filter_function(option.action)
-      end, options)
-    end
-
-    callback(options)
-  end)
+  )
 end
 
 ---@param diagnostic Diagnostic

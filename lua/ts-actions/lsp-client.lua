@@ -41,7 +41,7 @@ end
 --
 --
 ---@class CodeActionContext
----@field diagnostics? Diagnostic[]
+---@field diagnostics? vim.Diagnostic[]
 ---@field only? string[]
 ---@field triggerKind? number
 --
@@ -51,102 +51,42 @@ end
 ---@field range? { start: number, end: number }
 
 ---@param bufnr  number
----@param options CodeActionOptions
+---@param diagnostics lsp.Diagnostic[]
 ---@param callback fun(params: CodeActionResult[], options: CodeActionOptions): nil
-function LspClient:request_code_actions(bufnr, options, callback)
+function LspClient:request_code_actions(bufnr, diagnostics, callback)
   if self.pending_request then
     vim.notify("textDocument/codeAction request pending")
     return
   end
 
-  options = options or {}
-  options["context"] = options["context"] or {}
+  local options = {
+    context = {
+      diagnostics = diagnostics,
+    },
+  }
+  local range_params = lsp.util.make_range_params(0, "utf-16")
+  local final_params = vim.tbl_deep_extend("keep", options, range_params)
 
-  if not options.context.triggerKind then
-    options.context.triggerKind = vim.lsp.protocol.CodeActionTriggerKind.Invoked
+  if not self:supports_code_action(bufnr) then
+    logger:debug("No LSP clients support code actions")
+    return
   end
-
-  if not options.context.diagnostics then
-    local line, col = unpack(api.nvim_win_get_cursor(0))
-    local line_diagnostics = lsp.diagnostic.get_line_diagnostics(
-      api.nvim_get_current_buf(),
-      line - 1,
-      {},
-      nil
-    )
-
-    logger:log("line_diagnostics", line_diagnostics)
-
-    options.context.diagnostics = vim.tbl_filter(function(d)
-      local is_multiline = d.range["end"].line
-        and d.range["start"].line ~= d.range["end"].line
-
-      local on_start_line = d.range["start"].line + 1 == line
-      local on_end_line = d.range["end"].line + 1 == line
-
-      logger:log("code actions diags", {
-        line = line,
-        col = col,
-        is_multiline = is_multiline,
-        on_start_line = on_start_line,
-        on_end_line = on_end_line,
-        d = d,
-      })
-
-      if
-        not is_multiline
-        and d.range["start"].character <= col
-        and d.range["end"].character >= col
-      then
-        return true
-      elseif
-        is_multiline
-        and on_start_line
-        and d.range["start"].character <= col
-      then
-        return true
-      elseif
-        is_multiline
-        and on_end_line
-        and d.range["end"].character >= col
-      then
-        return true
-      end
-
-      return false
-    end, line_diagnostics)
-  end
-
-  -- figure out the right range params to give to lsp client
-  local mode = api.nvim_get_mode().mode
-  local range = {}
-  if options.range then
-    assert(type(options.range) == "table", "code_action range must be a table")
-    local start =
-      assert(options.range.start, "range must have a `start` property")
-    local end_ =
-      assert(options.range["end"], "range must have a `end` property")
-    range = lsp.util.make_given_range_params(start, end_)
-  elseif mode == "v" or mode == "V" then
-    local from_sel = utils.range_from_selection(0, mode)
-    range = lsp.util.make_given_range_params(from_sel.start, from_sel["end"])
-  else
-    range = lsp.util.make_range_params()
-  end
-
-  -- build the final params
-  -- lsp.util.make_range_params adds the textDocument field
-  local final_params = vim.tbl_deep_extend("keep", options, range)
 
   logger:log("requesting code actions", final_params)
   self.pending_request = true
 
   -- TODO accum all here
-  lsp.buf_request_all(
+  vim.lsp.buf_request_all(
     bufnr,
     "textDocument/codeAction",
     final_params,
     function(results)
+      -- check if the first entry in result has `err` field
+      if results[1] and results[1].err ~= nil then
+        logger:error(results[1].err.message)
+        return
+      end
+      -- logger:log("results", results)
       self.pending_request = false
       ---@type CodeActionResult[]
       local actions = {}
@@ -165,6 +105,27 @@ function LspClient:request_code_actions(bufnr, options, callback)
       callback(actions, options)
     end
   )
+end
+
+---@param bufnr number
+---@return boolean
+function LspClient:supports_code_action(bufnr)
+  local clients = vim.lsp.get_clients({ bufnr = bufnr })
+  for _, client in ipairs(clients) do
+    if vim.version().minor >= 10 then
+      local reg = client.dynamic_capabilities:get(
+        "textDocument/codeAction",
+        { bufnr = bufnr }
+      )
+      if reg or client.supports_method("textDocument/codeAction") then
+        return true
+      end
+    end
+    if client.server_capabilities.codeActionProvider then
+      return true
+    end
+  end
+  return false
 end
 
 ---@param client any
@@ -246,7 +207,7 @@ end
 
 ---get the line or cursor diagnostics
 ---@param opt table
----@return Diagnostic[]
+---@return vim.Diagnostic[]
 local function get_diagnostic(opt)
   local cur_buf = vim.api.nvim_get_current_buf()
   local buf_diags = vim.diagnostic.get(cur_buf)
@@ -311,15 +272,15 @@ local function get_diagnostic(opt)
 end
 
 ---@class GetNextOpts
----@field severity? DiagnosticSeverity
+---@field severity? vim.diagnostic.Severity
 ---@field pos 'next' | 'prev' | 'cursor'
 
 ---@class GotoDiagnosticOpts
----@field severity? DiagnosticSeverity
+---@field severity? vim.diagnostic.Severity
 
 --
 ---@param opts? GetNextOpts
----@return Diagnostic|nil
+---@return vim.Diagnostic|nil
 function LspClient:get_diagnostic(opts)
   opts = opts or {}
   local severity = opts.severity or vim.diagnostic.severity.ERROR
@@ -339,19 +300,50 @@ function LspClient:get_diagnostic(opts)
     end
   end
 
-  if pos == "prev" then
-    return vim.diagnostic.get_prev({
-      severity = { min = severity },
-      wrap = true,
-      float = false,
-    })
+  local current_pos = vim.api.nvim_win_get_cursor(0)
+  local all_diagnostics =
+    vim.diagnostic.get(0, { severity = { min = severity } })
+
+  if #all_diagnostics == 0 then
+    return nil
   end
 
-  return vim.diagnostic.get_next({
-    severity = { min = severity },
-    wrap = true,
-    float = false,
-  })
+  -- Sort diagnostics by line and column
+  table.sort(all_diagnostics, function(a, b)
+    if a.lnum == b.lnum then
+      return a.col < b.col
+    end
+    return a.lnum < b.lnum
+  end)
+
+  local current_line = current_pos[1] - 1 -- Convert to 0-based
+  local current_col = current_pos[2]
+
+  if pos == "prev" then
+    for i = #all_diagnostics, 1, -1 do
+      local diag = all_diagnostics[i]
+      if
+        diag.lnum < current_line
+        or (diag.lnum == current_line and diag.col < current_col)
+      then
+        return diag
+      end
+    end
+    -- Wrap to last diagnostic
+    return all_diagnostics[#all_diagnostics]
+  else
+    for i = 1, #all_diagnostics do
+      local diag = all_diagnostics[i]
+      if
+        diag.lnum > current_line
+        or (diag.lnum == current_line and diag.col > current_col)
+      then
+        return diag
+      end
+    end
+    -- Wrap to first diagnostic
+    return all_diagnostics[1]
+  end
 end
 
 return LspClient

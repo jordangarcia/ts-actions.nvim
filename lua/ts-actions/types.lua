@@ -55,7 +55,7 @@
 ---@field title string
 ---@field kind? string
 ---@field isPreferred? boolean
----@field diagnostics? Diagnostic[]
+---@field diagnostics? vim.Diagnostic[]
 ---@field edit? table
 ---@field command? table
 
